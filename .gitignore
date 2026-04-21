@@ -4,3 +4,4 @@ flexprint_export_*.xls
 flexprint_orders_*.csv
 flexprint_order_items_*.csv
 __pycache__/
+!docs/latest/flexprint_export_full.xls
