@@ -3,16 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>FlexPrint Export</title>
+  <title>Export Portal</title>
+  <meta name="robots" content="noindex,nofollow,noarchive,nosnippet,noimageindex">
+  <meta name="googlebot" content="noindex,nofollow,noarchive,nosnippet,noimageindex">
   <style>
     :root {
-      --bg: #eef4f7;
+      --bg: #edf4f7;
       --card: #ffffff;
-      --ink: #14202b;
-      --muted: #4c5e70;
-      --brand: #0b7285;
-      --brand2: #1696a5;
-      --line: #d4dfe8;
+      --ink: #12202b;
+      --muted: #4b6071;
+      --brand: #0c6d86;
+      --brand2: #1d92a8;
+      --line: #d2e0e9;
     }
 
     * { box-sizing: border-box; }
@@ -22,13 +24,13 @@
       font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
       color: var(--ink);
       background:
-        radial-gradient(circle at 5% 15%, #d8e7ee 0%, transparent 34%),
-        radial-gradient(circle at 96% 20%, #d4efef 0%, transparent 40%),
+        radial-gradient(circle at 8% 14%, #d7e6ee 0%, transparent 35%),
+        radial-gradient(circle at 95% 16%, #d4eded 0%, transparent 40%),
         var(--bg);
     }
 
     main {
-      width: min(920px, 92vw);
+      width: min(900px, 92vw);
       margin: 36px auto;
       display: grid;
       gap: 14px;
@@ -39,12 +41,12 @@
       border: 1px solid var(--line);
       border-radius: 14px;
       padding: 18px;
-      box-shadow: 0 8px 20px rgba(20, 32, 43, 0.06);
+      box-shadow: 0 8px 20px rgba(18, 32, 43, 0.06);
     }
 
     h1 {
       margin: 0 0 8px;
-      font-size: 1.6rem;
+      font-size: 1.55rem;
       letter-spacing: 0.2px;
     }
 
@@ -73,6 +75,8 @@
       justify-content: center;
       cursor: pointer;
       font-size: 0.93rem;
+      background: #f4f8fb;
+      color: var(--ink);
     }
 
     .btn-primary {
@@ -81,16 +85,11 @@
       background: linear-gradient(120deg, var(--brand), var(--brand2));
     }
 
-    .btn-secondary {
-      color: var(--ink);
-      background: #f4f8fb;
-    }
-
     .meta {
       margin-top: 12px;
       font-size: 0.92rem;
       color: var(--muted);
-      line-height: 1.5;
+      line-height: 1.55;
     }
 
     .mono {
@@ -114,25 +113,24 @@
 <body>
   <main>
     <section class="card">
-      <h1>FlexPrint Export</h1>
-      <p>Ingen PAT behövs. Ladda ner senaste publicerade XLS direkt.</p>
+      <h1>Export Portal</h1>
+      <p>Senaste filen byggs automatiskt var 15:e minut. Ingen inloggning eller token krävs på sidan.</p>
       <div class="actions">
-        <a class="btn btn-primary" href="./latest/flexprint_export_full.xls" download>
+        <a class="btn btn-primary" href="./latest/report_latest.xls" download>
           Ladda ner senaste XLS
         </a>
-        <a class="btn btn-secondary" target="_blank" rel="noopener noreferrer"
-           href="https://github.com/orcoorco/flexprint-order-export/actions/workflows/flexprint-export.yml">
-          Generera ny export (GitHub Actions)
-        </a>
+        <button class="btn" id="refreshBtn" type="button">
+          Uppdatera status
+        </button>
       </div>
       <div class="meta">
-        Fil: <span class="mono">docs/latest/flexprint_export_full.xls</span><br>
-        Repo: <span class="mono">orcoorco/flexprint-order-export</span>
+        Fil: <span class="mono">docs/latest/report_latest.xls</span><br>
+        Notering: filen är publik.
       </div>
     </section>
 
     <section class="card">
-      <strong>Publiceringsstatus</strong>
+      <strong>Status</strong>
       <div id="status">Läser status...</div>
     </section>
   </main>
@@ -140,7 +138,7 @@
   <script>
     async function loadStatus() {
       const statusEl = document.getElementById("status");
-      const fileUrl = "./latest/flexprint_export_full.xls";
+      const fileUrl = "./latest/report_latest.xls";
       const tsUrl = "./latest/last_updated_utc.txt";
 
       try {
@@ -153,7 +151,7 @@
         if (headRes.ok) {
           const length = headRes.headers.get("content-length");
           const modified = headRes.headers.get("last-modified");
-          lines.push(`XLS tillgänglig: JA`);
+          lines.push("XLS tillgänglig: JA");
           if (modified) lines.push(`Server last-modified: ${modified}`);
           if (length) lines.push(`Storlek (bytes): ${length}`);
         } else {
@@ -164,7 +162,7 @@
           const txt = (await tsRes.text()).trim();
           lines.push(`Senast publicerad (UTC): ${txt}`);
         } else {
-          lines.push(`Senast publicerad (UTC): okänd`);
+          lines.push("Senast publicerad (UTC): okänd");
         }
 
         statusEl.textContent = lines.join("\n");
@@ -173,6 +171,7 @@
       }
     }
 
+    document.getElementById("refreshBtn").addEventListener("click", loadStatus);
     loadStatus();
   </script>
 </body>

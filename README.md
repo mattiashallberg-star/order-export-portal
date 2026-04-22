@@ -1,6 +1,6 @@
-# FlexPrint Order Export
+# Order Export
 
-Exporterar orderhistorik från FlexPrint till:
+Genererar:
 - CSV på ordernivå
 - CSV på item-/detaljnivå
 - XLSX med två flikar (`Orders`, `Items`)
@@ -9,41 +9,47 @@ Exporterar orderhistorik från FlexPrint till:
 ## Lokalt
 
 ```bash
-python flexprint_order_export.py \
-  --output flexprint_orders_full_retry.csv \
-  --items-output flexprint_order_items_full_retry.csv \
-  --xlsx-output flexprint_export_full.xlsx \
-  --xls-output flexprint_export_full.xls
+python order_export.py \
+  --base-url "https://example.com/espressi/" \
+  --username "$EXPORT_USER" \
+  --password "$EXPORT_PASS" \
+  --output orders_latest.csv \
+  --items-output order_items_latest.csv \
+  --xlsx-output report_latest.xlsx \
+  --xls-output report_latest.xls
 ```
 
 Miljövariabler:
-- `FLEXPRINT_USER`
-- `FLEXPRINT_PASS`
+- `EXPORT_BASE_URL`
+- `EXPORT_USER`
+- `EXPORT_PASS`
 
 ## GitHub Actions
 
-Workflow finns i:
-- `.github/workflows/flexprint-export.yml`
+Workflow:
+- `.github/workflows/data-export.yml`
 
 Setup-guide:
 - `GITHUB_ACTIONS_SETUP.md`
 
-## HTML-sida för körning + nedladdning
+## Webbsida
 
-En enkel webbsida finns i:
+Sidan finns i:
 - `docs/index.html`
 
-Aktivera GitHub Pages:
-1. `Settings -> Pages`
-2. Source: `Deploy from a branch`
-3. Branch: `main` och folder: `/docs`
+Den:
+- kräver ingen PAT
+- visar status
+- laddar ner senaste publicerade `.xls`
 
-Sidan används för att:
-- ladda ner senaste publicerade `docs/latest/flexprint_export_full.xls`
-- öppna workflow-sidan för att starta ny export i GitHub Actions
-
-Workflowen publicerar senaste `.xls` till:
-- `docs/latest/flexprint_export_full.xls`
+Publicerad fil:
+- `docs/latest/report_latest.xls`
 - `docs/latest/last_updated_utc.txt`
 
-Viktigt: eftersom repot är publikt blir den publicerade `.xls`-filen också publik via Pages.
+## Sökmotorer
+
+Sidan är markerad för att inte indexeras med:
+- `meta robots noindex,nofollow`
+- `docs/robots.txt` med `Disallow: /`
+
+Obs: det är en stark signal men ingen absolut garanti för att all indexering stoppas i alla motorer.

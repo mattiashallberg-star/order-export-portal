@@ -1,7 +1,7 @@
 # Generated export files
-flexprint_export_*.xlsx
-flexprint_export_*.xls
-flexprint_orders_*.csv
-flexprint_order_items_*.csv
+report_*.xlsx
+report_*.xls
+orders_*.csv
+order_items_*.csv
 __pycache__/
-!docs/latest/flexprint_export_full.xls
+!docs/latest/report_latest.xls

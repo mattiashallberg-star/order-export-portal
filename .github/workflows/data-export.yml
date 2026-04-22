@@ -1,4 +1,4 @@
-name: FlexPrint Export
+name: Data Export
 
 on:
   workflow_dispatch:
@@ -20,21 +20,22 @@ on:
         default: "0"
         type: string
   schedule:
-    - cron: "15 04 * * 1-5"
+    - cron: "*/15 * * * *"
 
 permissions:
   contents: write
 
 jobs:
   export:
-    name: Export FlexPrint data
+    name: Build latest reports
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      FLEXPRINT_USER: ${{ secrets.FLEXPRINT_USER }}
-      FLEXPRINT_PASS: ${{ secrets.FLEXPRINT_PASS }}
-      FLEXPRINT_VIEW: ${{ github.event.inputs.view }}
-      FLEXPRINT_MAX_ORDERS: ${{ github.event.inputs.max_orders }}
+      EXPORT_USER: ${{ secrets.EXPORT_USER }}
+      EXPORT_PASS: ${{ secrets.EXPORT_PASS }}
+      EXPORT_BASE_URL: ${{ secrets.EXPORT_BASE_URL }}
+      EXPORT_VIEW: ${{ github.event.inputs.view }}
+      EXPORT_MAX_ORDERS: ${{ github.event.inputs.max_orders }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -51,52 +52,56 @@ jobs:
 
       - name: Validate required secrets
         run: |
-          if [ -z "${FLEXPRINT_USER}" ] || [ -z "${FLEXPRINT_PASS}" ]; then
-            echo "Missing FLEXPRINT_USER or FLEXPRINT_PASS repository secret."
+          if [ -z "${EXPORT_USER}" ] || [ -z "${EXPORT_PASS}" ] || [ -z "${EXPORT_BASE_URL}" ]; then
+            echo "Missing one or more required secrets: EXPORT_USER, EXPORT_PASS, EXPORT_BASE_URL."
             exit 1
           fi
 
       - name: Run export
         run: |
-          VIEW="${FLEXPRINT_VIEW:-all}"
-          MAX_ORDERS="${FLEXPRINT_MAX_ORDERS:-0}"
-          python flexprint_order_export.py \
+          VIEW="${EXPORT_VIEW:-all}"
+          MAX_ORDERS="${EXPORT_MAX_ORDERS:-0}"
+          python order_export.py \
+            --base-url "${EXPORT_BASE_URL}" \
+            --username "${EXPORT_USER}" \
+            --password "${EXPORT_PASS}" \
             --view "${VIEW}" \
             --max-orders "${MAX_ORDERS}" \
             --detail-timeout 120 \
             --detail-retries 4 \
             --detail-sleep 0.25 \
-            --output flexprint_orders_full_retry.csv \
-            --items-output flexprint_order_items_full_retry.csv \
-            --xlsx-output flexprint_export_full.xlsx \
-            --xls-output flexprint_export_full.xls
+            --output orders_latest.csv \
+            --items-output order_items_latest.csv \
+            --xlsx-output report_latest.xlsx \
+            --xls-output report_latest.xls
 
-      - name: Publish latest XLS to GitHub Pages folder
+      - name: Publish latest XLS to Pages folder
         run: |
           mkdir -p docs/latest
-          cp flexprint_export_full.xls docs/latest/flexprint_export_full.xls
+          cp report_latest.xls docs/latest/report_latest.xls
           date -u +"%Y-%m-%dT%H:%M:%SZ" > docs/latest/last_updated_utc.txt
 
       - name: Commit latest XLS (if changed)
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f docs/latest/flexprint_export_full.xls docs/latest/last_updated_utc.txt
+          git add -f docs/latest/report_latest.xls docs/latest/last_updated_utc.txt
           if git diff --cached --quiet; then
             echo "No changes to commit."
           else
-            git commit -m "Update latest XLS export [skip ci]"
+            git commit -m "Update latest report [skip ci]"
             git push origin main
           fi
 
-      - name: Upload export files
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: flexprint-export-${{ github.run_number }}
+          name: data-export-${{ github.run_number }}
           retention-days: 30
           if-no-files-found: error
           path: |
-            flexprint_export_full.xlsx
-            flexprint_export_full.xls
-            flexprint_orders_full_retry.csv
-            flexprint_order_items_full_retry.csv
+            report_latest.xlsx
+            report_latest.xls
+            orders_latest.csv
+            order_items_latest.csv
+

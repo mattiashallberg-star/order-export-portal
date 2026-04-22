@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Export FlexPrint order history and order-detail data to CSV/XLSX/XLS.
+Export order history and detail data to CSV/XLSX/XLS.
 
 Usage examples:
-  FLEXPRINT_USER=Verbum FLEXPRINT_PASS=VerbuM23 python3 flexprint_order_export.py
-  python3 flexprint_order_export.py --username Verbum --password 'VerbuM23' --view inprocess
-  python3 flexprint_order_export.py --max-orders 20
+  EXPORT_USER=<user> EXPORT_PASS=<pass> EXPORT_BASE_URL=<base_url> python3 order_export.py
+  python3 order_export.py --username <user> --password <pass> --base-url <base_url> --view inprocess
+  python3 order_export.py --max-orders 20
 """
 
 from __future__ import annotations
@@ -412,14 +412,14 @@ def write_xls(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Export FlexPrint order history to CSV.")
+    parser = argparse.ArgumentParser(description="Export order history to CSV/XLSX/XLS.")
     parser.add_argument(
         "--base-url",
-        default="https://live.flexprint.se/espressi/",
-        help="Base URL to FlexPrint installation.",
+        default=os.getenv("EXPORT_BASE_URL", ""),
+        help="Base URL to source installation.",
     )
-    parser.add_argument("--username", default=os.getenv("FLEXPRINT_USER"), help="FlexPrint username.")
-    parser.add_argument("--password", default=os.getenv("FLEXPRINT_PASS"), help="FlexPrint password.")
+    parser.add_argument("--username", default=os.getenv("EXPORT_USER"), help="Source username.")
+    parser.add_argument("--password", default=os.getenv("EXPORT_PASS"), help="Source password.")
     parser.add_argument(
         "--view",
         default="all",
@@ -428,22 +428,22 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output",
-        default=f"flexprint_orders_{os.getenv('USER', 'export')}.csv",
+        default="orders_export.csv",
         help="Output CSV for order-level data.",
     )
     parser.add_argument(
         "--items-output",
-        default=f"flexprint_order_items_{os.getenv('USER', 'export')}.csv",
+        default="order_items_export.csv",
         help="Output CSV for line-item data from each detail page.",
     )
     parser.add_argument(
         "--xlsx-output",
-        default=f"flexprint_export_{os.getenv('USER', 'export')}.xlsx",
+        default="export_report.xlsx",
         help="Output XLSX workbook with two sheets: Orders and Items.",
     )
     parser.add_argument(
         "--xls-output",
-        default=f"flexprint_export_{os.getenv('USER', 'export')}.xls",
+        default="export_report.xls",
         help="Output XLS workbook with two sheets: Orders and Items.",
     )
     parser.add_argument(
@@ -481,7 +481,10 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     if not args.username or not args.password:
-        print("Missing credentials. Use --username/--password or FLEXPRINT_USER/FLEXPRINT_PASS.", file=sys.stderr)
+        print("Missing credentials. Use --username/--password or EXPORT_USER/EXPORT_PASS.", file=sys.stderr)
+        return 2
+    if not args.base_url:
+        print("Missing source URL. Use --base-url or EXPORT_BASE_URL.", file=sys.stderr)
         return 2
 
     base_url = normalize_base_url(args.base_url)
