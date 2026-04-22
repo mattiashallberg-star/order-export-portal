@@ -195,17 +195,60 @@
     const AUTH_STORAGE_KEY = "export_portal_auth_v1";
     const AUTH_PERSIST_MS = 1000 * 60 * 60 * 24 * 365 * 20; // 20 years
 
+    function setCookie(name, value, maxAgeSec) {
+      document.cookie = `${name}=${encodeURIComponent(value)}; max-age=${maxAgeSec}; path=/; samesite=lax`;
+    }
+
+    function getCookie(name) {
+      const needle = `${name}=`;
+      const parts = document.cookie.split(";").map((p) => p.trim());
+      const hit = parts.find((p) => p.startsWith(needle));
+      if (!hit) return null;
+      return decodeURIComponent(hit.slice(needle.length));
+    }
+
     function saveAuth() {
       const payload = {
         ok: true,
         expiresAt: Date.now() + AUTH_PERSIST_MS
       };
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(payload));
+      const raw = JSON.stringify(payload);
+
+      // Persist in several stores to survive strict browser settings.
+      try {
+        localStorage.setItem(AUTH_STORAGE_KEY, raw);
+      } catch {}
+      try {
+        sessionStorage.setItem(AUTH_STORAGE_KEY, raw);
+      } catch {}
+      try {
+        setCookie(AUTH_STORAGE_KEY, raw, Math.floor(AUTH_PERSIST_MS / 1000));
+      } catch {}
+
+      // Keep current-page auth even if all persistent stores fail.
+      window.__authOkInMemory = true;
+    }
+
+    function readPersistedAuthRaw() {
+      try {
+        const local = localStorage.getItem(AUTH_STORAGE_KEY);
+        if (local) return local;
+      } catch {}
+      try {
+        const session = sessionStorage.getItem(AUTH_STORAGE_KEY);
+        if (session) return session;
+      } catch {}
+      try {
+        const cookie = getCookie(AUTH_STORAGE_KEY);
+        if (cookie) return cookie;
+      } catch {}
+      return null;
     }
 
     function hasAuth() {
+      if (window.__authOkInMemory) return true;
       try {
-        const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+        const raw = readPersistedAuthRaw();
         if (!raw) return false;
         const parsed = JSON.parse(raw);
         return Boolean(parsed && parsed.ok && Number(parsed.expiresAt) > Date.now());
@@ -229,7 +272,8 @@
     function tryLogin() {
       const input = document.getElementById("passwordInput");
       const msg = document.getElementById("authMessage");
-      if (input.value === AUTH_PASSWORD) {
+      const entered = input.value.trim().toLowerCase();
+      if (entered === AUTH_PASSWORD) {
         saveAuth();
         msg.textContent = "";
         input.value = "";
