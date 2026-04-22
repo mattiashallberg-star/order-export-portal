@@ -121,6 +121,7 @@ jobs:
             --detail-sleep 0.25 \
             --output orders_latest.csv \
             --items-output order_items_latest.csv \
+            --report-output report_latest.csv \
             --xlsx-output report_latest.xlsx \
             --xls-output report_latest.xls
 
@@ -150,22 +151,106 @@ jobs:
       - name: Send email notification (Gmail SMTP)
         if: ${{ steps.schedule_guard.outputs.run == 'true' && success() && env.SMTP_USER != '' && env.SMTP_PASS != '' && env.MAIL_FROM != '' && env.MAIL_TO != '' }}
         continue-on-error: true
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: ${{ env.SMTP_HOST }}
-          server_port: ${{ env.SMTP_PORT }}
-          username: ${{ env.SMTP_USER }}
-          password: ${{ env.SMTP_PASS }}
-          subject: Ny månadsrapport är klar
-          to: ${{ env.MAIL_TO }}
-          from: ${{ env.MAIL_FROM }}
-          secure: true
-          body: |
-            Månadsrapporten är klar.
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python - <<'PY'
+          import csv
+          import html
+          import os
+          import smtplib
+          from calendar import monthrange
+          from datetime import datetime
+          from email.message import EmailMessage
+          from pathlib import Path
 
-            Ladda ner: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/latest/report_latest.xls
-            Workflow-körning: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          attachments: report_latest.xls
+          report_path = Path("report_latest.csv")
+          if not report_path.exists():
+              raise RuntimeError("report_latest.csv saknas, kan inte bygga mejltabell.")
+
+          def subtract_months(dt: datetime, months: int) -> datetime:
+              year = dt.year
+              month = dt.month - months
+              while month <= 0:
+                  month += 12
+                  year -= 1
+              day = min(dt.day, monthrange(year, month)[1])
+              return dt.replace(year=year, month=month, day=day)
+
+          now = datetime.now()
+          cutoff = subtract_months(now, 2)
+
+          with report_path.open("r", encoding="utf-8-sig", newline="") as handle:
+              reader = csv.DictReader(handle)
+              rows = list(reader)
+
+          headers = ["description", "quantity", "created"]
+          html_rows = []
+          for row in rows:
+              html_rows.append(
+                  "<tr>"
+                  + "".join(f"<td>{html.escape(row.get(h, ''))}</td>" for h in headers)
+                  + "</tr>"
+              )
+
+          table_html = (
+              "<table border='1' cellpadding='6' cellspacing='0' style='border-collapse:collapse;'>"
+              "<thead><tr>"
+              "<th>description</th><th>quantity</th><th>created</th>"
+              "</tr></thead>"
+              "<tbody>"
+              + "".join(html_rows)
+              + "</tbody></table>"
+          )
+
+          html_body = f"""
+          <html>
+            <body>
+              <p>Rapporten är klar.</p>
+              <p><strong>Filtrering:</strong></p>
+              <ul>
+                <li>Inkluderade poster: created från och med {html.escape(cutoff.strftime('%Y-%m-%d %H:%M:%S'))}</li>
+                <li>Bortfiltrerade poster: created före {html.escape(cutoff.strftime('%Y-%m-%d %H:%M:%S'))}</li>
+                <li>Körtid: {html.escape(now.strftime('%Y-%m-%d %H:%M:%S'))}</li>
+              </ul>
+              <p><strong>Hela tabellen ({len(rows)} rader):</strong></p>
+              {table_html}
+              <p>Workflow-körning: {html.escape(os.environ['RUN_URL'])}</p>
+            </body>
+          </html>
+          """
+
+          text_body = (
+              "Rapporten är klar.\n\n"
+              f"Filtrering:\n"
+              f"- Inkluderade poster: created från och med {cutoff.strftime('%Y-%m-%d %H:%M:%S')}\n"
+              f"- Bortfiltrerade poster: created före {cutoff.strftime('%Y-%m-%d %H:%M:%S')}\n"
+              f"- Körtid: {now.strftime('%Y-%m-%d %H:%M:%S')}\n"
+              f"- Antal rader: {len(rows)}\n\n"
+              f"Workflow-körning: {os.environ['RUN_URL']}\n"
+          )
+
+          msg = EmailMessage()
+          msg["Subject"] = "Ärenderad: Körning Flexprint"
+          msg["From"] = os.environ["MAIL_FROM"]
+          msg["To"] = ", ".join([x.strip() for x in os.environ["MAIL_TO"].split(",") if x.strip()])
+          msg.set_content(text_body)
+          msg.add_alternative(html_body, subtype="html")
+
+          xls_path = Path("report_latest.xls")
+          if xls_path.exists():
+              with xls_path.open("rb") as handle:
+                  msg.add_attachment(
+                      handle.read(),
+                      maintype="application",
+                      subtype="vnd.ms-excel",
+                      filename="report_latest.xls",
+                  )
+
+          with smtplib.SMTP_SSL(os.environ["SMTP_HOST"], int(os.environ["SMTP_PORT"])) as smtp:
+              smtp.login(os.environ["SMTP_USER"], os.environ["SMTP_PASS"])
+              smtp.send_message(msg)
+          PY
 
       - name: Upload artifacts
         if: ${{ steps.schedule_guard.outputs.run == 'true' }}
@@ -177,5 +262,6 @@ jobs:
           path: |
             report_latest.xlsx
             report_latest.xls
+            report_latest.csv
             orders_latest.csv
             order_items_latest.csv

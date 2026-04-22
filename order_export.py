@@ -484,6 +484,11 @@ def parse_args() -> argparse.Namespace:
         help="Output CSV for line-item data from each detail page.",
     )
     parser.add_argument(
+        "--report-output",
+        default="report_export.csv",
+        help="Output CSV for final report rows (description, quantity, created).",
+    )
+    parser.add_argument(
         "--xlsx-output",
         default="export_report.xlsx",
         help="Output XLSX workbook with one sheet: Report.",
@@ -607,6 +612,7 @@ def main() -> int:
         write_csv(Path(args.output), rows, ORDER_COLUMNS + DETAIL_COLUMNS)
         if not args.no_details:
             write_csv(Path(args.items_output), items_export_rows, ITEM_COLUMNS)
+            write_csv(Path(args.report_output), report_rows, REPORT_COLUMNS)
         workbook_written = False
         workbook_message = ""
         if args.xlsx_output:
@@ -635,7 +641,7 @@ def main() -> int:
             "Done: "
             f"{len(rows)} orders -> {Path(args.output).resolve()} and "
             f"{Path(args.items_output).resolve()} "
-            f"({len(report_rows)} report rows)"
+            f"({len(report_rows)} report rows, report csv: {Path(args.report_output).resolve()})"
         )
     if args.xlsx_output and workbook_written:
         print(f"Workbook: {Path(args.xlsx_output).resolve()}")

@@ -3,6 +3,7 @@
 Genererar:
 - CSV på ordernivå
 - CSV på item-/detaljnivå
+- CSV för slutrapport (`description`, `quantity`, `created`)
 - XLSX med en flik (`Report`)
 - XLS med en flik (`Report`)
 
@@ -22,6 +23,7 @@ python order_export.py \
   --password "$EXPORT_PASS" \
   --output orders_latest.csv \
   --items-output order_items_latest.csv \
+  --report-output report_latest.csv \
   --xlsx-output report_latest.xlsx \
   --xls-output report_latest.xls
 ```
@@ -41,6 +43,8 @@ Setup-guide:
 
 Valfritt:
 - e-postnotis via Gmail SMTP (`SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`, `MAIL_TO`)
+  - ämnesrad: `Ärenderad: Körning Flexprint`
+  - mejlet innehåller datumfilterinfo + hela tabellen
 
 ## Webbsida
 

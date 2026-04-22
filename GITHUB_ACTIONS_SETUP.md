@@ -41,6 +41,7 @@ Valfritt:
 Artifacts per körning:
 - `report_latest.xlsx`
 - `report_latest.xls`
+- `report_latest.csv`
 - `orders_latest.csv`
 - `order_items_latest.csv`
 
@@ -64,9 +65,11 @@ Workflowen körs:
 
 ## 6) E-post via Gmail SMTP (valfritt)
 
-Om `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`, `MAIL_TO` finns:
+Om `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`, `MAIL_TO` finns:
 - workflowen skickar mejl vid körning
-- mejlet innehåller länk till senaste filen och länk till körningen
+- ämnesrad: `Ärenderad: Körning Flexprint`
+- mejlet beskriver datumfiltreringen (inkluderat/bortfiltrerat)
+- mejlet innehåller hela tabellen (`description`, `quantity`, `created`)
 - `report_latest.xls` bifogas i mejlet
 
 Google-krav:
