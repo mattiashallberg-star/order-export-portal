@@ -250,8 +250,12 @@ jobs:
                       filename="report_latest.xls",
                   )
 
+          smtp_user = os.environ["SMTP_USER"].strip()
+          # Gmail app passwords are often shown grouped with spaces; SMTP expects
+          # the raw token without whitespace.
+          smtp_pass = "".join(os.environ["SMTP_PASS"].split())
           with smtplib.SMTP_SSL(os.environ["SMTP_HOST"], int(os.environ["SMTP_PORT"])) as smtp:
-              smtp.login(os.environ["SMTP_USER"], os.environ["SMTP_PASS"])
+              smtp.login(smtp_user, smtp_pass)
               smtp.send_message(msg)
           PY
 
