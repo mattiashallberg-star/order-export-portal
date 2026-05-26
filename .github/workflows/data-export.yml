@@ -87,9 +87,31 @@ jobs:
 
       - name: Checkout repository
         if: ${{ steps.schedule_guard.outputs.run == 'true' }}
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.WORKFLOW_PAT != '' && secrets.WORKFLOW_PAT || github.token }}
+        env:
+          CHECKOUT_TOKEN: ${{ secrets.WORKFLOW_PAT }}
+          FALLBACK_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          TOKEN="${CHECKOUT_TOKEN}"
+          if [ -z "${TOKEN}" ]; then
+            TOKEN="${FALLBACK_TOKEN}"
+          fi
+          if [ -z "${TOKEN}" ]; then
+            echo "No checkout token available."
+            exit 1
+          fi
+
+          REPO_URL="https://github.com/${GITHUB_REPOSITORY}.git"
+          AUTH_B64="$(printf 'x-access-token:%s' "${TOKEN}" | base64 | tr -d '\n')"
+          AUTH_HEADER="AUTHORIZATION: basic ${AUTH_B64}"
+
+          git init .
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          git remote add origin "${REPO_URL}"
+          git config --local http.https://github.com/.extraheader "${AUTH_HEADER}"
+          git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin "+${GITHUB_SHA}:refs/remotes/origin/main"
+          git checkout --progress --force -B main refs/remotes/origin/main
 
       - name: Prevent duplicate monthly send
         id: monthly_lock
