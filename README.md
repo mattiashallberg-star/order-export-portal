@@ -37,8 +37,11 @@ Miljövariabler:
 
 Workflow:
 - `.github/workflows/data-export.yml`
-- schemalagt sista tisdagen varje månad kl. 08:05 och 08:25 (Europe/Stockholm)
-- inbyggd månadslåsning (`docs/latest/last_sent_month.txt`) för att undvika dubbelskick
+- skarpt utskick: sista tisdagen varje månad kl. 08:05 och 08:25 (Europe/Stockholm)
+- förkörning: dagen före (måndagen före sista tisdagen) kl. 08:05 och 08:25 till `mattias.hallberg@gmail.com`
+- inbyggd låsning per månad för att undvika dubbelskick:
+  - skarpt utskick: `docs/latest/last_sent_month.txt`
+  - förkörning: `docs/latest/last_precheck_month.txt`
 
 Setup-guide:
 - `GITHUB_ACTIONS_SETUP.md`
@@ -46,7 +49,10 @@ Setup-guide:
 Valfritt:
 - e-postnotis via Gmail SMTP (`SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`, `MAIL_TO`)
   - ämnesrad: `Månadsrapport - Astice`
+  - förkörning använder ämnesrad: `Förkörning (dagen före) - Månadsrapport Astice`
   - mejlet innehåller datumfilterinfo (utan tabell)
+- varningsmail via Resend om utskicket misslyckas (`RESEND_API_KEY`, `RESEND_FROM`)
+  - varning skickas till `mattias.hallberg@gmail.com`
 
 ## Webbsida
 

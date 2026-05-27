@@ -20,10 +20,15 @@ on:
         default: "0"
         type: string
   schedule:
-    # Two attempts to reduce risk of dropped scheduled runs.
+    # Two attempts for the real monthly send (last Tuesday).
     - cron: "5 8 * * 2"
       timezone: "Europe/Stockholm"
     - cron: "25 8 * * 2"
+      timezone: "Europe/Stockholm"
+    # Two attempts for precheck send (day before = Monday before last Tuesday).
+    - cron: "5 8 * * 1"
+      timezone: "Europe/Stockholm"
+    - cron: "25 8 * * 1"
       timezone: "Europe/Stockholm"
 
 concurrency:
@@ -48,42 +53,59 @@ jobs:
       SMTP_PASS: ${{ secrets.SMTP_PASS }}
       MAIL_FROM: ${{ secrets.MAIL_FROM }}
       MAIL_TO: ${{ secrets.MAIL_TO }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      RESEND_FROM: ${{ secrets.RESEND_FROM }}
+      PRECHECK_MAIL_TO: mattias.hallberg@gmail.com
+      ALERT_TO: mattias.hallberg@gmail.com
       EXPORT_VIEW: ${{ github.event.inputs.view }}
       EXPORT_MAX_ORDERS: ${{ github.event.inputs.max_orders }}
     steps:
-      - name: Decide schedule window (last Tuesday each month, Stockholm time)
+      - name: Decide schedule window and recipient (Stockholm time)
         id: schedule_guard
         env:
           TZ: Europe/Stockholm
         run: |
           if [ "${{ github.event_name }}" != "schedule" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
-            echo "Manual trigger -> run export."
+            echo "run_kind=manual" >> "$GITHUB_OUTPUT"
+            echo "mail_to=${MAIL_TO}" >> "$GITHUB_OUTPUT"
+            echo "Manual trigger -> run export using default recipients."
             exit 0
           fi
 
           YEAR="$(date +%Y)"
           MONTH="$(date +%m)"
           TODAY_DAY=$((10#$(date +%d)))
+          TODAY_WDAY=$((10#$(date +%u)))
 
           LAST_DAY=$((10#$(date -d "${YEAR}-${MONTH}-01 +1 month -1 day" +%d)))
           LAST_DAY_WEEKDAY=$((10#$(date -d "${YEAR}-${MONTH}-${LAST_DAY} 12:00:00" +%u)))
           # Monday=1 ... Sunday=7, Tuesday=2.
           OFFSET=$(((LAST_DAY_WEEKDAY - 2 + 7) % 7))
           LAST_TUESDAY=$((LAST_DAY - OFFSET))
+          PRECHECK_DAY=$((LAST_TUESDAY - 1))
 
-          if [ "${TODAY_DAY}" -eq "${LAST_TUESDAY}" ]; then
+          if [ "${TODAY_DAY}" -eq "${LAST_TUESDAY}" ] && [ "${TODAY_WDAY}" -eq 2 ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
-            echo "Scheduled window matched (last Tuesday, Stockholm time)."
+            echo "run_kind=monthly" >> "$GITHUB_OUTPUT"
+            echo "mail_to=${MAIL_TO}" >> "$GITHUB_OUTPUT"
+            echo "Scheduled window matched: monthly send (last Tuesday)."
+          elif [ "${TODAY_DAY}" -eq "${PRECHECK_DAY}" ] && [ "${TODAY_WDAY}" -eq 1 ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "run_kind=precheck" >> "$GITHUB_OUTPUT"
+            echo "mail_to=${PRECHECK_MAIL_TO}" >> "$GITHUB_OUTPUT"
+            echo "Scheduled window matched: precheck send (day before last Tuesday)."
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping scheduled run. Today=${TODAY_DAY}, last_tuesday=${LAST_TUESDAY}"
+            echo "run_kind=none" >> "$GITHUB_OUTPUT"
+            echo "mail_to=${MAIL_TO}" >> "$GITHUB_OUTPUT"
+            echo "Skipping scheduled run. Today_day=${TODAY_DAY}, today_wday=${TODAY_WDAY}, last_tuesday=${LAST_TUESDAY}, precheck_day=${PRECHECK_DAY}"
           fi
 
       - name: Skip outside monthly execution window
         if: ${{ steps.schedule_guard.outputs.run != 'true' }}
         run: |
-          echo "No export this run. Window is last Tuesday each month at 08:05 and 08:25 Europe/Stockholm."
+          echo "No export this run. Windows are Monday+Tuesday around last Tuesday each month at 08:05 and 08:25 Europe/Stockholm."
 
       - name: Checkout repository
         if: ${{ steps.schedule_guard.outputs.run == 'true' }}
@@ -113,7 +135,7 @@ jobs:
           git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin "+${GITHUB_SHA}:refs/remotes/origin/main"
           git checkout --progress --force -B main refs/remotes/origin/main
 
-      - name: Prevent duplicate monthly send
+      - name: Prevent duplicate scheduled send
         id: monthly_lock
         if: ${{ steps.schedule_guard.outputs.run == 'true' }}
         env:
@@ -125,8 +147,21 @@ jobs:
             exit 0
           fi
 
+          RUN_KIND="${{ steps.schedule_guard.outputs.run_kind }}"
           CURRENT_MONTH="$(date +%Y-%m)"
-          MARKER_FILE="docs/latest/last_sent_month.txt"
+          MARKER_FILE=""
+          if [ "${RUN_KIND}" = "monthly" ]; then
+            MARKER_FILE="docs/latest/last_sent_month.txt"
+          elif [ "${RUN_KIND}" = "precheck" ]; then
+            MARKER_FILE="docs/latest/last_precheck_month.txt"
+          fi
+
+          if [ -z "${MARKER_FILE}" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "No scheduled marker needed for run_kind=${RUN_KIND}."
+            exit 0
+          fi
+
           LAST_SENT=""
           if [ -f "${MARKER_FILE}" ]; then
             LAST_SENT="$(tr -d '[:space:]' < "${MARKER_FILE}")"
@@ -134,7 +169,7 @@ jobs:
 
           if [ "${LAST_SENT}" = "${CURRENT_MONTH}" ]; then
             echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "Monthly report already sent for ${CURRENT_MONTH}. Marker=${MARKER_FILE}."
+            echo "Scheduled send already done for ${CURRENT_MONTH}. Marker=${MARKER_FILE}."
           else
             echo "run=true" >> "$GITHUB_OUTPUT"
             echo "No marker for ${CURRENT_MONTH}. Continue."
@@ -143,7 +178,7 @@ jobs:
       - name: Skip duplicate monthly attempt
         if: ${{ steps.schedule_guard.outputs.run == 'true' && steps.monthly_lock.outputs.run != 'true' }}
         run: |
-          echo "Skipping retry attempt because this month is already marked as sent."
+          echo "Skipping retry attempt because this month is already marked as sent for this run type."
 
       - name: Setup Python
         if: ${{ steps.schedule_guard.outputs.run == 'true' && steps.monthly_lock.outputs.run == 'true' }}
@@ -197,9 +232,12 @@ jobs:
           date -u +"%Y-%m-%dT%H:%M:%SZ" > docs/latest/last_updated_utc.txt
 
       - name: Send email notification (Gmail SMTP)
+        id: send_mail
         if: ${{ steps.schedule_guard.outputs.run == 'true' && steps.monthly_lock.outputs.run == 'true' && success() && env.SMTP_USER != '' && env.SMTP_PASS != '' && env.MAIL_FROM != '' && env.MAIL_TO != '' }}
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_KIND: ${{ steps.schedule_guard.outputs.run_kind }}
+          EFFECTIVE_MAIL_TO: ${{ steps.schedule_guard.outputs.mail_to }}
         run: |
           python - <<'PY'
           import csv
@@ -258,9 +296,15 @@ jobs:
           )
 
           msg = EmailMessage()
-          msg["Subject"] = "Månadsrapport - Astice"
+          run_kind = os.environ.get("RUN_KIND", "manual").strip()
+          if run_kind == "precheck":
+              subject = "Förkörning (dagen före) - Månadsrapport Astice"
+          else:
+              subject = "Månadsrapport - Astice"
+          msg["Subject"] = subject
           msg["From"] = os.environ["MAIL_FROM"]
-          msg["To"] = ", ".join([x.strip() for x in os.environ["MAIL_TO"].split(",") if x.strip()])
+          raw_to = os.environ.get("EFFECTIVE_MAIL_TO", "").strip() or os.environ["MAIL_TO"]
+          msg["To"] = ", ".join([x.strip() for x in raw_to.split(",") if x.strip()])
           msg.set_content(text_body)
           msg.add_alternative(html_body, subtype="html")
 
@@ -283,13 +327,67 @@ jobs:
               smtp.send_message(msg)
           PY
 
+      - name: Send warning if report email failed
+        if: ${{ always() && steps.schedule_guard.outputs.run == 'true' && steps.monthly_lock.outputs.run != 'false' && steps.send_mail.outcome != 'success' && env.RESEND_API_KEY != '' && env.RESEND_FROM != '' && env.ALERT_TO != '' }}
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_KIND: ${{ steps.schedule_guard.outputs.run_kind }}
+          TARGET_TO: ${{ steps.schedule_guard.outputs.mail_to }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          run_kind = os.environ.get("RUN_KIND", "unknown")
+          target_to = os.environ.get("TARGET_TO", "(okänd mottagare)")
+          run_url = os.environ["RUN_URL"]
+          alert_to = os.environ["ALERT_TO"]
+
+          payload = {
+              "from": os.environ["RESEND_FROM"],
+              "to": [alert_to],
+              "subject": "VARNING: utskick misslyckades - Astice",
+              "text": (
+                  "Ett automatiskt utskick misslyckades.\n\n"
+                  f"Körtyp: {run_kind}\n"
+                  f"Tänkt mottagare: {target_to}\n"
+                  f"Körning: {run_url}\n"
+              ),
+          }
+
+          req = urllib.request.Request(
+              "https://api.resend.com/emails",
+              data=json.dumps(payload).encode("utf-8"),
+              method="POST",
+              headers={
+                  "Authorization": f"Bearer {os.environ['RESEND_API_KEY']}",
+                  "Content-Type": "application/json",
+              },
+          )
+          with urllib.request.urlopen(req, timeout=30) as resp:
+              body = resp.read().decode("utf-8")
+              print(f"Warning email sent via Resend: status={resp.status}, body={body}")
+          PY
+
       - name: Mark month as sent (scheduled runs only)
         if: ${{ steps.schedule_guard.outputs.run == 'true' && steps.monthly_lock.outputs.run == 'true' && github.event_name == 'schedule' }}
         env:
           TZ: Europe/Stockholm
+          RUN_KIND: ${{ steps.schedule_guard.outputs.run_kind }}
         run: |
+          MARKER_FILE=""
+          if [ "${RUN_KIND}" = "monthly" ]; then
+            MARKER_FILE="docs/latest/last_sent_month.txt"
+          elif [ "${RUN_KIND}" = "precheck" ]; then
+            MARKER_FILE="docs/latest/last_precheck_month.txt"
+          fi
+          if [ -z "${MARKER_FILE}" ]; then
+            echo "No schedule marker needed for run kind: ${RUN_KIND}"
+            exit 0
+          fi
           mkdir -p docs/latest
-          date +"%Y-%m" > docs/latest/last_sent_month.txt
+          date +"%Y-%m" > "${MARKER_FILE}"
 
       - name: Commit latest XLS and marker (if changed)
         id: publish
@@ -300,6 +398,9 @@ jobs:
           FILES_TO_ADD="docs/latest/report_latest.xls docs/latest/last_updated_utc.txt"
           if [ -f "docs/latest/last_sent_month.txt" ]; then
             FILES_TO_ADD="${FILES_TO_ADD} docs/latest/last_sent_month.txt"
+          fi
+          if [ -f "docs/latest/last_precheck_month.txt" ]; then
+            FILES_TO_ADD="${FILES_TO_ADD} docs/latest/last_precheck_month.txt"
           fi
           git add -f ${FILES_TO_ADD}
           if git diff --cached --quiet; then
